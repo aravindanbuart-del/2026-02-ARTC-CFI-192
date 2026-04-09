@@ -1,0 +1,61 @@
+import pandas as pd
+import glob
+import os
+
+# Define paths
+base_dir = r"d:\2026-02-ARTC-CFI-192\archive (29)"
+projects = ["eclipse", "equinox", "lucene", "mylyn", "pde"]
+files = []
+
+for project in projects:
+    path = os.path.join(base_dir, project, project, "single-version-ck-oo.csv")
+    if os.path.exists(path):
+        files.append(path)
+    else:
+        print(f"File not found: {path}")
+
+# Load and merge
+dfs = []
+for file in files:
+    # Note: separator is ; and there's a trailing space/semicolon in headers
+    df = pd.read_csv(file, sep=';', skipinitialspace=True)
+    # Remove empty columns (often occurs due to trailing ;)
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    # Strip whitespace from column names
+    df.columns = df.columns.str.strip()
+    dfs.append(df)
+
+merged_df = pd.concat(dfs, ignore_index=True)
+
+# Drop rows with all NaN if any
+merged_df = merged_df.dropna(how='all')
+
+# Create binary target
+# Use 'bugs' column. If bugs > 0, it's defective (1), else non-defective (0)
+merged_df['target'] = (merged_df['bugs'] > 0).astype(int)
+
+# Features list
+features = [
+    'cbo', 'dit', 'fanIn', 'fanOut', 'lcom', 'noc', 
+    'numberOfAttributes', 'numberOfAttributesInherited', 
+    'numberOfLinesOfCode', 'numberOfMethods', 
+    'numberOfMethodsInherited', 'numberOfPrivateAttributes', 
+    'numberOfPrivateMethods', 'numberOfPublicAttributes', 
+    'numberOfPublicMethods', 'rfc', 'wmc'
+]
+
+# Select columns
+# Ensure classname is kept for reference but not for training
+final_df = merged_df[['classname'] + features + ['target']]
+
+# Final cleaning: handle any remaining NaN in features
+final_df = final_df.dropna(subset=features)
+
+# Save
+output_path = r"d:\2026-02-ARTC-CFI-192\results\bug_prediction_prepared.csv"
+final_df.to_csv(output_path, index=False)
+
+print(f"Data prepared and saved to {output_path}")
+print(f"Total rows: {len(final_df)}")
+print(f"Defective modules: {final_df['target'].sum()}")
+print(f"Non-defective modules: {(final_df['target'] == 0).sum()}")
